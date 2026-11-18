@@ -307,6 +307,9 @@
       map3d = new vw.Map("vmap", options);
       mapReady = true;
       setupBanner.style.display = 'none';
+      // new vw.Map()의 초기 뷰는 내부적으로 높은 위성뷰로 떨어지는 경우가 있어,
+      // 생성 직후 moveTo()로 한 번 더 우리가 원하는 시점으로 보정합니다.
+      setTimeout(function(){ try{ map3d.moveTo(nearCam); }catch(e){} }, 600);
     }catch(e){
       console.warn('VWorld map init failed', e);
       setupBanner.textContent = '⚠ 지도 초기화 중 오류가 발생했습니다: ' + (e && e.message ? e.message : e);
@@ -328,21 +331,19 @@
     setTimeout(function(){ tryInitMap(attemptsLeft-1); }, 200);
   })(30);
 
+  // map3d.moveTo()는 내부적으로 Cesium 카메라의 flyTo(duration 0.7초)를 호출합니다.
+  // 너무 자주 부르면 애니메이션끼리 서로 끊어버리므로, 0.7초보다 넉넉하게 스로틀합니다.
   var lastCamUpdate = 0;
+  var CAM_UPDATE_MS = 900;
   function updateCamera(distZ, lateralX, headingDeg){
-    if(!mapReady) return;
+    if(!mapReady || !map3d) return;
     var now = Date.now();
-    if(now - lastCamUpdate < 350) return; // 과도한 재생성을 막기 위한 스로틀
+    if(now - lastCamUpdate < CAM_UPDATE_MS) return;
     lastCamUpdate = now;
     try{
       var p = walkerPoint(distZ, lateralX);
       var cam = new vw.CameraPosition(new vw.CoordZ(p.lon, p.lat, CAMERA_HEIGHT), new vw.Direction(headingDeg, CAMERA_TILT, 0));
-      var options = new vw.MapOptions(
-        vw.BasemapType.GRAPHIC, "",
-        vw.DensityType.BASIC, vw.DensityType.BASIC,
-        false, cam, cam
-      );
-      map3d = new vw.Map("vmap", options);
+      map3d.moveTo(cam);
     }catch(e){ /* 조용히 무시: 지도 없이도 체험은 계속됩니다 */ }
   }
 
