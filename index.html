@@ -1,0 +1,549 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>소리길 3D — 보행 레이더 (실지도)</title>
+<style>
+  :root{
+    --bg:#f6f2ea; --surface:#ffffff; --surface-2:#efe8d9;
+    --ink:#1c1812; --ink-dim:#6f675a; --line:rgba(28,24,18,0.14);
+    --accent:#b5571f; --accent-ink:#fff8ef;
+    --cue-right:#b5571f; --cue-left:#146b61;
+    --warn:#9c3b2e;
+    --focus:#1c1812;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#0c0e10; --surface:#161a1d; --surface-2:#1e2327;
+      --ink:#efe9dc; --ink-dim:#a39c8e; --line:rgba(239,233,220,0.14);
+      --accent:#ffb454; --accent-ink:#1c1300;
+      --cue-right:#ffb454; --cue-left:#5fd9c7;
+      --warn:#ff8a73;
+      --focus:#efe9dc;
+    }
+  }
+  *{box-sizing:border-box;}
+  body{ margin:0; background:var(--bg); color:var(--ink); font-family:'Noto Sans KR',-apple-system,sans-serif; font-size:15.5px; line-height:1.6; }
+  a{ color:var(--accent); }
+  h1{ font-family:'Gowun Batang',serif; font-weight:700; margin:0; font-size:clamp(26px,5vw,36px); }
+  button,input{ font-family:inherit; color:inherit; }
+
+  .wrap{ max-width:900px; margin:0 auto; padding:28px 20px 64px; }
+  .top{ display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
+  .brandmark{ font-family:'IBM Plex Mono',monospace; font-size:12px; letter-spacing:.08em; color:var(--ink-dim); }
+  .backlink{ font-size:13px; border:1px solid var(--line); border-radius:999px; padding:6px 13px; text-decoration:none; }
+
+  .lead{ color:var(--ink-dim); max-width:640px; margin-top:8px; font-size:14.5px; }
+
+  .setup-banner{
+    margin-top:16px; border:1px dashed var(--warn); background:var(--surface-2); border-radius:12px; padding:14px 16px;
+    font-size:13.5px; color:var(--ink);
+  }
+  .setup-banner code{ font-family:'IBM Plex Mono',monospace; background:var(--surface); padding:2px 5px; border-radius:4px; }
+
+  .envstrip{ display:flex; gap:12px; flex-wrap:wrap; margin-top:14px; font-size:12px; color:var(--ink-dim); }
+  .envstrip .badge{ font-family:'IBM Plex Mono',monospace; font-size:10px; padding:1px 6px; border-radius:999px; margin-right:5px; }
+  .badge.yes{ background:#146b3e; color:#eafff2; }
+  .badge.no{ background:var(--warn); color:#1a0603; }
+
+  .stage{ position:relative; margin-top:18px; border-radius:16px; overflow:hidden; border:1px solid var(--line); background:#111; }
+  #vmap{ width:100%; height:clamp(300px,54vw,460px); }
+
+  .hud{ position:absolute; inset:0; pointer-events:none; }
+  .hud-top{ position:absolute; top:0; left:0; right:0; padding:12px 14px; display:flex; justify-content:space-between; background:linear-gradient(to bottom, rgba(0,0,0,.55), transparent); color:#fff; }
+  .hud-dist{ font-family:'IBM Plex Mono',monospace; font-size:14px; }
+  .hud-bar{ position:absolute; top:40px; left:14px; right:14px; height:4px; background:rgba(255,255,255,.25); border-radius:999px; }
+  .hud-bar-fill{ height:100%; border-radius:999px; background:var(--accent); width:0%; }
+
+  .warn-banner{
+    position:absolute; left:50%; top:54px; transform:translate(-50%,-10px); opacity:0; transition:all .18s ease;
+    background:var(--warn); color:#fff; font-size:13.5px; font-weight:600; padding:9px 16px; border-radius:10px;
+    white-space:nowrap; box-shadow:0 6px 18px rgba(0,0,0,.35);
+  }
+  .warn-banner.show{ opacity:1; transform:translate(-50%,0); }
+
+  .side-ind{ position:absolute; top:50%; width:46px; height:46px; border-radius:50%; transform:translateY(-50%); display:flex; align-items:center; justify-content:center; font-size:20px; opacity:0; transition:opacity .15s; background:rgba(255,255,255,.14); color:#fff; }
+  .side-ind.left{ left:14px; } .side-ind.right{ right:14px; }
+  .side-ind.show{ opacity:1; }
+  .side-ind.left.show{ box-shadow:0 0 0 4px color-mix(in srgb, var(--cue-left) 55%, transparent); }
+  .side-ind.right.show{ box-shadow:0 0 0 4px color-mix(in srgb, var(--cue-right) 55%, transparent); }
+
+  .blind-overlay{ position:absolute; inset:0; background:#000; opacity:0; pointer-events:none; transition:opacity .4s ease; display:flex; align-items:center; justify-content:center; text-align:center; color:#cfc8ba; padding:20px; font-size:13.5px; }
+  .blind-overlay.on{ opacity:.97; }
+
+  .setup-overlay{ position:absolute; inset:0; background:rgba(10,10,12,.92); display:flex; align-items:center; justify-content:center; text-align:center; color:#efe9dc; padding:24px; font-size:13.5px; }
+
+  .success-ov{ position:absolute; inset:0; background:rgba(0,0,0,.72); display:flex; align-items:center; justify-content:center; flex-direction:column; gap:10px; color:#fff; text-align:center; padding:24px; opacity:0; pointer-events:none; transition:opacity .25s; }
+  .success-ov.show{ opacity:1; pointer-events:auto; }
+  .success-ov strong{ font-family:'Gowun Batang',serif; font-size:22px; }
+
+  .controls{ display:flex; flex-direction:column; gap:12px; margin-top:16px; }
+  .ctrl-row{ display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .btn{ border-radius:9px; border:1px solid var(--line); padding:10px 15px; font-size:13.5px; cursor:pointer; background:var(--surface); color:var(--ink); }
+  .btn-primary{ background:var(--accent); color:var(--accent-ink); border-color:transparent; font-weight:600; }
+  .speed-btn{ border:1px solid var(--line); background:var(--surface); border-radius:8px; padding:7px 11px; font-family:'IBM Plex Mono',monospace; font-size:12px; cursor:pointer; color:var(--ink-dim); }
+  .speed-btn.active{ background:var(--ink); color:var(--bg); border-color:transparent; }
+
+  .steer-pad{ display:flex; gap:10px; }
+  .steer-btn{ width:64px; height:64px; border-radius:14px; border:1px solid var(--line); background:var(--surface); font-size:22px; cursor:pointer; touch-action:none; user-select:none; }
+  .steer-btn:active{ background:var(--accent); color:var(--accent-ink); border-color:transparent; }
+
+  .hint{ font-size:12.5px; color:var(--ink-dim); }
+
+  .log-panel{ margin-top:14px; background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px 16px; }
+  .log-panel h4{ font-family:'IBM Plex Mono',monospace; font-size:11.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-dim); margin:0 0 10px; }
+  .transcript{ list-style:none; margin:0; padding:0; max-height:170px; overflow-y:auto; display:flex; flex-direction:column; gap:6px; }
+  .transcript li{ font-size:13px; display:flex; gap:8px; }
+  .transcript .t{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--ink-dim); flex:none; padding-top:1px; }
+
+  footer{ margin-top:30px; padding-top:18px; border-top:1px solid var(--line); font-size:12.5px; color:var(--ink-dim); }
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Noto+Sans+KR:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<!--
+  VWorld 3D 지도 Open API
+  https://dev.vworld.kr 에서 "3D 지도" 인증키를 발급받고, 배포할 도메인(예: GitHub Pages 주소)을
+  함께 등록해야 합니다. 발급받은 값을 아래 VWORLD_API_KEY / VWORLD_DOMAIN 두 곳에 그대로 넣어주세요.
+-->
+<script type="text/javascript"
+  src="http://map.vworld.kr/js/webglMapInit.js.do?version=2.0&apiKey=VWORLD_API_KEY&domain=VWORLD_DOMAIN">
+</script>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="top">
+    <span class="brandmark">SORIGIL 3D — 실지도 기반 보행 레이더</span>
+    <a class="backlink" href="https://claude.ai/artifact/PpeM6r5ymj1NMBbC4jQHYm" target="_blank" rel="noopener">← 소리길 설명 페이지</a>
+  </div>
+
+  <h1>보행 레이더 (실지도)</h1>
+  <p class="lead">VWorld 3D 지도가 보여주는 실제 지형·건물 위에서, 강동역을 향해 걸어가는 가상의 300m를 체험합니다. 장애물 위치와 간격은 시연용 가상 데이터지만, 지도 자체는 실제 공간정보입니다.</p>
+
+  <div class="setup-banner" id="setupBanner">
+    ⚠ 아직 VWorld API 키가 설정되지 않았습니다. <code>index.html</code> 상단의 <code>VWORLD_API_KEY</code>, <code>VWORLD_DOMAIN</code> 두 값을 발급받은 키와 등록 도메인으로 바꿔주세요. (자세한 방법은 README.md 참고)
+  </div>
+
+  <div class="envstrip" id="envStrip"></div>
+
+  <div class="stage">
+    <div id="vmap"></div>
+    <div class="hud">
+      <div class="hud-top">
+        <span class="hud-dist" id="hudDist">0m / 300m</span>
+        <span class="hud-dist" id="hudNext">—</span>
+      </div>
+      <div class="hud-bar"><div class="hud-bar-fill" id="hudBarFill"></div></div>
+      <div class="warn-banner" id="warnBanner">⚠ 장애물</div>
+      <div class="side-ind left" id="indLeft">◀</div>
+      <div class="side-ind right" id="indRight">▶</div>
+    </div>
+    <div class="blind-overlay" id="blindOverlay">눈을 감고, 소리와 떨림에만 집중해서 걸어보세요.<br>버튼을 다시 누르면 화면이 돌아옵니다.</div>
+    <div class="success-ov" id="successOv">
+      <strong>도착했습니다</strong>
+      <span>강동역까지 300m를 걷는 동안 장애물 5개와 횡단보도 1곳을 지났습니다.</span>
+      <button class="btn btn-primary" id="btnRestart" type="button">다시 걷기</button>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="ctrl-row">
+      <div class="steer-pad">
+        <button class="steer-btn" id="btnLeft" type="button" aria-label="왼쪽으로 이동">◀</button>
+        <button class="steer-btn" id="btnRight" type="button" aria-label="오른쪽으로 이동">▶</button>
+      </div>
+      <button class="btn" id="btnStep" type="button">👋 흔들기 (한 걸음)</button>
+      <button class="btn btn-primary" id="btnAuto" type="button">▶ 자동 보행</button>
+      <div style="display:flex;gap:6px;">
+        <button class="speed-btn" data-speed="1" type="button">1배속</button>
+        <button class="speed-btn active" data-speed="4" type="button">4배속</button>
+        <button class="speed-btn" data-speed="10" type="button">10배속</button>
+      </div>
+    </div>
+    <div class="ctrl-row">
+      <button class="btn" id="btnMotion" type="button">📱 기기 흔들기 감지</button>
+      <button class="btn" id="btnBlind" type="button">🙈 시각 차단 모드</button>
+      <span class="hint">키보드 ← → ↑ 로도 이동할 수 있습니다</span>
+    </div>
+  </div>
+
+  <div class="log-panel" id="logPanel">
+    <h4>진행 기록</h4>
+    <ul class="transcript" id="transcript"></ul>
+  </div>
+
+  <footer>
+    도착 지점 좌표는 강동역(37.53583, 127.13222) 실제 좌표를 사용했습니다. 출발 지점과 장애물 위치는 그 지점에서 역산한 가상의 경로이며, 실제 보도 구조와 다를 수 있습니다. 지도 위 카메라 이동 각도(Direction)와 고도(CoordZ 높이값)는 VWorld 키 발급 후 실제 화면을 보며 조정이 필요합니다 — 코드의 CAMERA_HEIGHT / CAMERA_TILT 주석을 참고하세요.
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ================= geo helpers ================= */
+  function toRad(d){ return d*Math.PI/180; }
+  function toDeg(r){ return r*180/Math.PI; }
+  function destinationPoint(lat, lon, bearingDeg, distM){
+    var R = 6371000;
+    var delta = distM/R, theta = toRad(bearingDeg);
+    var phi1 = toRad(lat), lambda1 = toRad(lon);
+    var sinPhi2 = Math.sin(phi1)*Math.cos(delta) + Math.cos(phi1)*Math.sin(delta)*Math.cos(theta);
+    var phi2 = Math.asin(sinPhi2);
+    var y = Math.sin(theta)*Math.sin(delta)*Math.cos(phi1);
+    var x = Math.cos(delta) - Math.sin(phi1)*sinPhi2;
+    var lambda2 = lambda1 + Math.atan2(y, x);
+    return { lat: toDeg(phi2), lon: ((toDeg(lambda2)+540)%360)-180 };
+  }
+
+  var STATION = { lat:37.53583, lon:127.13222 }; // 강동역 (실제 좌표)
+  var TOTAL = 300;
+  var TRAVEL_BEARING = 35; // 임의 설정 — 실제 보도 방향과 다를 수 있음
+  var START = destinationPoint(STATION.lat, STATION.lon, (TRAVEL_BEARING+180)%360, TOTAL);
+
+  function pathPoint(distAlongM){
+    return destinationPoint(START.lat, START.lon, TRAVEL_BEARING, distAlongM);
+  }
+  function lateralPoint(base, lateralM){
+    if(Math.abs(lateralM) < 0.01) return base;
+    var side = lateralM >= 0 ? TRAVEL_BEARING+90 : TRAVEL_BEARING-90;
+    return destinationPoint(base.lat, base.lon, side, Math.abs(lateralM));
+  }
+  function walkerPoint(distZ, lateralX){
+    return lateralPoint(pathPoint(distZ), lateralX);
+  }
+
+  /* ================= env check ================= */
+  var hasTTS = 'speechSynthesis' in window;
+  var hasVibrate = !!navigator.vibrate;
+  var AC = window.AudioContext || window.webkitAudioContext;
+  var hasAudio = !!AC;
+  var hasMotion = (typeof DeviceMotionEvent !== 'undefined');
+  var envStrip = document.getElementById('envStrip');
+  [['음성 안내', hasTTS], ['진동', hasVibrate], ['좌우 신호음', hasAudio], ['흔들기 감지', hasMotion]].forEach(function(it){
+    var span = document.createElement('span');
+    var b = document.createElement('span');
+    b.className = 'badge ' + (it[1] ? 'yes' : 'no');
+    b.textContent = it[1] ? '지원됨' : '지원 안 됨';
+    span.appendChild(b);
+    span.appendChild(document.createTextNode(it[0]));
+    envStrip.appendChild(span);
+  });
+
+  /* ================= audio / vibration / speech ================= */
+  var audioCtx = null;
+  function ensureAudio(){
+    if(!audioCtx && AC){ try{ audioCtx = new AC(); }catch(e){} }
+    if(audioCtx && audioCtx.state === 'suspended'){ audioCtx.resume().catch(function(){}); }
+  }
+  function playPing(opts){
+    opts = opts || {};
+    ensureAudio();
+    if(!audioCtx) return;
+    try{
+      var pan = opts.pan||0, freq = opts.freq||760, dur = opts.dur||0.2, gain = opts.gain||0.25;
+      var osc = audioCtx.createOscillator();
+      var g = audioCtx.createGain();
+      osc.type = opts.type||'sine'; osc.frequency.value = freq;
+      var now = audioCtx.currentTime;
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(gain, now+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, now+dur);
+      osc.connect(g);
+      if(audioCtx.createStereoPanner){
+        var p = audioCtx.createStereoPanner();
+        p.pan.value = Math.max(-1, Math.min(1, pan));
+        g.connect(p); p.connect(audioCtx.destination);
+      } else { g.connect(audioCtx.destination); }
+      osc.start(now); osc.stop(now+dur+0.02);
+    }catch(e){}
+  }
+  function buzz(pattern){ try{ if(navigator.vibrate) navigator.vibrate(pattern); }catch(e){} }
+
+  var transcriptEl = document.getElementById('transcript');
+  var startTime = Date.now();
+  function stamp(){
+    var s = Math.floor((Date.now()-startTime)/1000);
+    return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+  }
+  function log(text){
+    var li = document.createElement('li');
+    var t = document.createElement('span'); t.className='t'; t.textContent = stamp();
+    var m = document.createElement('span'); m.textContent = text;
+    li.appendChild(t); li.appendChild(m);
+    transcriptEl.appendChild(li);
+    transcriptEl.scrollTop = transcriptEl.scrollHeight;
+  }
+  function speak(text){
+    log(text);
+    if(!hasTTS) return;
+    try{
+      var u = new SpeechSynthesisUtterance(text);
+      u.lang = 'ko-KR'; u.rate = 1;
+      window.speechSynthesis.speak(u);
+    }catch(e){}
+  }
+
+  /* ================= VWorld 3D map ================= */
+  var mapReady = false;
+  var map3d = null;
+  var setupBanner = document.getElementById('setupBanner');
+
+  // 카메라 고도/각도 — 실제 키 발급 후 화면을 보며 조정하세요.
+  var CAMERA_HEIGHT = 220;  // 해수면 기준 추정 고도(m). 건물 위로 충분히 띄워 "지면 아래로 꺼지는" 문제를 피했습니다.
+  var CAMERA_TILT = -58;    // 아래를 내려다보는 각도(추정). VWorld Direction 파라미터 부호/순서는 버전에 따라 다를 수 있습니다.
+
+  window.vwmap = function(){
+    try{
+      var p0 = walkerPoint(0, 0);
+      var farCam = new vw.CameraPosition(new vw.CoordZ(p0.lon, p0.lat, CAMERA_HEIGHT*6), new vw.Direction(TRAVEL_BEARING, -90, 0));
+      var nearCam = new vw.CameraPosition(new vw.CoordZ(p0.lon, p0.lat, CAMERA_HEIGHT), new vw.Direction(TRAVEL_BEARING, CAMERA_TILT, 0));
+      var options = new vw.MapOptions(
+        vw.BasemapType.GRAPHIC, "",
+        vw.DensityType.BASIC, vw.DensityType.BASIC,
+        false, farCam, nearCam
+      );
+      map3d = new vw.Map("vmap", options);
+      mapReady = true;
+      setupBanner.style.display = 'none';
+    }catch(e){
+      console.warn('VWorld map init failed', e);
+    }
+  };
+
+  // API 키가 비어있거나 로딩에 실패해도 체험(소리/진동/기록)은 계속 동작하도록,
+  // 일정 시간 안에 vw 전역이 안 잡히면 안내만 남기고 넘어갑니다.
+  setTimeout(function(){
+    if(typeof vw === 'undefined'){
+      setupBanner.textContent = '⚠ VWorld 지도를 불러오지 못했습니다. API 키/도메인 설정을 확인해주세요. (지도 없이도 아래 소리·진동 체험은 동작합니다)';
+    }
+  }, 4000);
+
+  var lastCamUpdate = 0;
+  function updateCamera(distZ, lateralX, headingDeg){
+    if(!mapReady) return;
+    var now = Date.now();
+    if(now - lastCamUpdate < 350) return; // 과도한 재생성을 막기 위한 스로틀
+    lastCamUpdate = now;
+    try{
+      var p = walkerPoint(distZ, lateralX);
+      var cam = new vw.CameraPosition(new vw.CoordZ(p.lon, p.lat, CAMERA_HEIGHT), new vw.Direction(headingDeg, CAMERA_TILT, 0));
+      var options = new vw.MapOptions(
+        vw.BasemapType.GRAPHIC, "",
+        vw.DensityType.BASIC, vw.DensityType.BASIC,
+        false, cam, cam
+      );
+      map3d = new vw.Map("vmap", options);
+    }catch(e){ /* 조용히 무시: 지도 없이도 체험은 계속됩니다 */ }
+  }
+
+  /* ================= obstacles (가상 시연 데이터) ================= */
+  var LANE_HALF = 2.0;
+  var OBST_DEFS = [
+    { x:-1.5, z:45,  r:16, label:'가로수' },
+    { x: 1.3, z:95,  r:14, label:'볼라드' },
+    { x:-1.2, z:190, r:16, label:'공사 안전 펜스' },
+    { x: 0.2, z:235, r:14, label:'입간판' },
+    { x: 1.4, z:275, r:14, label:'전동킥보드' }
+  ];
+  var obstacles = OBST_DEFS.map(function(o){ return Object.assign({}, o, { warned:false, collided:false }); });
+  var CROSSWALK = { z:140, zoneR:20, label:'횡단보도' };
+  var pingTimer = null;
+
+  function sideLabel(relX){ return relX < -0.25 ? '왼쪽에' : (relX > 0.25 ? '오른쪽에' : '바로 앞에'); }
+
+  var indLeft = document.getElementById('indLeft');
+  var indRight = document.getElementById('indRight');
+  var warnBanner = document.getElementById('warnBanner');
+
+  function flashIndicator(relX){
+    var el = relX < 0 ? indLeft : indRight;
+    el.classList.add('show');
+    setTimeout(function(){ el.classList.remove('show'); }, 1300);
+  }
+  function showWarnBanner(text){
+    warnBanner.textContent = '⚠ ' + text;
+    warnBanner.classList.add('show');
+    setTimeout(function(){ warnBanner.classList.remove('show'); }, 1500);
+  }
+
+  function warnObstacle(o){
+    var relX = o.x - lateralX;
+    var pan = Math.max(-1, Math.min(1, relX/LANE_HALF));
+    playPing({ pan:pan, freq: o.label==='입간판'?900:700, dur:0.22, gain:0.28 });
+    buzz([30,40,30]);
+    speak(sideLabel(relX) + ' ' + o.label + '이 있습니다.');
+    if(!blindMode) showWarnBanner(o.label + ' · ' + sideLabel(relX).replace('에',''));
+    flashIndicator(relX);
+  }
+  function collisionObstacle(o){
+    playPing({ pan:Math.max(-1,Math.min(1,(o.x-lateralX)/LANE_HALF)), freq:220, dur:0.3, gain:0.32, type:'square' });
+    buzz([60,40,60,40,60]);
+    speak('조심하세요! ' + o.label + '에 거의 닿았습니다.');
+    if(!blindMode) showWarnBanner('충돌 주의! ' + o.label);
+  }
+  function enterCrosswalk(){
+    speak(CROSSWALK.label + '입니다.');
+    buzz([25]);
+    if(pingTimer) clearInterval(pingTimer);
+    pingTimer = setInterval(function(){ playPing({pan:0,freq:760,dur:0.14,gain:0.18}); buzz([12]); }, 650);
+  }
+  function exitCrosswalk(){ if(pingTimer){ clearInterval(pingTimer); pingTimer=null; } }
+
+  function checkWorld(prevZ, curZ){
+    obstacles.forEach(function(o){
+      var warnAt = o.z - o.r;
+      if(curZ >= warnAt && prevZ < warnAt && !o.warned){ o.warned = true; warnObstacle(o); }
+      if(curZ < warnAt - 6) o.warned = false;
+
+      var closeZ = Math.abs(curZ - o.z) < 1.3;
+      var closeX = Math.abs(lateralX - o.x) < 0.55;
+      if(closeZ && closeX && !o.collided){ o.collided = true; collisionObstacle(o); }
+      if(Math.abs(curZ - o.z) > 6) o.collided = false;
+    });
+    var zs = CROSSWALK.z - CROSSWALK.zoneR, ze = CROSSWALK.z + CROSSWALK.zoneR;
+    var nowIn = curZ >= zs && curZ <= ze;
+    var wasIn = prevZ >= zs && prevZ <= ze;
+    if(nowIn && !wasIn) enterCrosswalk();
+    if(!nowIn && wasIn) exitCrosswalk();
+  }
+
+  function nextLabel(curZ){
+    var upcoming = obstacles.filter(function(o){ return o.z > curZ; }).sort(function(a,b){ return a.z-b.z; })[0];
+    var crossDist = CROSSWALK.z - curZ;
+    var candidates = [];
+    if(upcoming) candidates.push({d:upcoming.z-curZ, t:upcoming.label});
+    if(crossDist > 0) candidates.push({d:crossDist, t:CROSSWALK.label});
+    if(!candidates.length) return '도착 지점';
+    candidates.sort(function(a,b){return a.d-b.d;});
+    return candidates[0].t + ' ' + Math.max(0,Math.round(candidates[0].d)) + 'm';
+  }
+
+  /* ================= state & controls ================= */
+  var distZ = 0, lateralX = 0;
+  var playing = false, speedMult = 4;
+  var REAL_MPS = 1.2;
+  var STEP = 14;
+  var arrived = false;
+  var blindMode = false;
+  var held = { left:false, right:false, fwd:false };
+
+  var hudDist = document.getElementById('hudDist');
+  var hudNext = document.getElementById('hudNext');
+  var hudBarFill = document.getElementById('hudBarFill');
+  var successOv = document.getElementById('successOv');
+  var logPanel = document.getElementById('logPanel');
+
+  function updateHUD(){
+    hudDist.textContent = Math.round(distZ) + 'm / ' + TOTAL + 'm';
+    hudNext.textContent = arrived ? '도착' : nextLabel(distZ);
+    hudBarFill.style.width = (distZ/TOTAL*100) + '%';
+  }
+
+  function setDistance(v){
+    var prev = distZ;
+    distZ = Math.max(0, Math.min(TOTAL, v));
+    checkWorld(prev, distZ);
+    updateCamera(distZ, lateralX, TRAVEL_BEARING);
+    if(distZ >= TOTAL && !arrived){
+      arrived = true; playing = false;
+      exitCrosswalk();
+      speak('도착했습니다. 강동역입니다.');
+      buzz([50,60,50,60,50]);
+      successOv.classList.add('show');
+    }
+    updateHUD();
+  }
+
+  document.getElementById('btnRestart').addEventListener('click', function(){
+    distZ = 0; lateralX = 0; arrived = false;
+    obstacles.forEach(function(o){ o.warned=false; o.collided=false; });
+    successOv.classList.remove('show');
+    exitCrosswalk();
+    updateCamera(0,0,TRAVEL_BEARING);
+    updateHUD();
+  });
+
+  document.getElementById('btnLeft').addEventListener('pointerdown', function(){ ensureAudio(); held.left = true; });
+  document.getElementById('btnRight').addEventListener('pointerdown', function(){ ensureAudio(); held.right = true; });
+  ['pointerup','pointerleave','pointercancel'].forEach(function(ev){
+    document.getElementById('btnLeft').addEventListener(ev, function(){ held.left = false; });
+    document.getElementById('btnRight').addEventListener(ev, function(){ held.right = false; });
+  });
+
+  document.getElementById('btnStep').addEventListener('click', function(){ ensureAudio(); setDistance(distZ + STEP); });
+
+  var autoBtn = document.getElementById('btnAuto');
+  autoBtn.addEventListener('click', function(){
+    ensureAudio();
+    playing = !playing;
+    autoBtn.textContent = playing ? '⏸ 일시정지' : '▶ 자동 보행';
+  });
+  document.querySelectorAll('.speed-btn').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.querySelectorAll('.speed-btn').forEach(function(b){ b.classList.remove('active'); });
+      btn.classList.add('active');
+      speedMult = parseFloat(btn.getAttribute('data-speed'));
+    });
+  });
+
+  document.getElementById('btnBlind').addEventListener('click', function(){
+    blindMode = !blindMode;
+    document.getElementById('blindOverlay').classList.toggle('on', blindMode);
+    logPanel.style.visibility = blindMode ? 'hidden' : 'visible';
+  });
+
+  var motionBtn = document.getElementById('btnMotion');
+  var lastShake = 0;
+  function onMotion(e){
+    var a = e.accelerationIncludingGravity || e.acceleration;
+    if(!a) return;
+    var mag = Math.sqrt((a.x||0)*(a.x||0)+(a.y||0)*(a.y||0)+(a.z||0)*(a.z||0));
+    var now = Date.now();
+    if(mag > 22 && now-lastShake > 400){ lastShake = now; ensureAudio(); setDistance(distZ+STEP); }
+  }
+  motionBtn.addEventListener('click', function(){
+    if(typeof DeviceMotionEvent !== 'undefined' && typeof DeviceMotionEvent.requestPermission === 'function'){
+      DeviceMotionEvent.requestPermission().then(function(state){
+        if(state === 'granted'){ window.addEventListener('devicemotion', onMotion); motionBtn.textContent = '📱 감지 켜짐'; }
+        else { motionBtn.textContent = '📱 권한 거부됨'; }
+      }).catch(function(){ motionBtn.textContent = '📱 사용 불가'; });
+    } else if('ondevicemotion' in window){
+      window.addEventListener('devicemotion', onMotion); motionBtn.textContent = '📱 감지 켜짐';
+    } else { motionBtn.textContent = '📱 지원 안 됨'; }
+  });
+
+  window.addEventListener('keydown', function(e){
+    if(e.code === 'ArrowLeft'){ held.left = true; ensureAudio(); }
+    if(e.code === 'ArrowRight'){ held.right = true; ensureAudio(); }
+    if(e.code === 'ArrowUp' || e.code === 'KeyW'){ held.fwd = true; ensureAudio(); }
+  });
+  window.addEventListener('keyup', function(e){
+    if(e.code === 'ArrowLeft') held.left = false;
+    if(e.code === 'ArrowRight') held.right = false;
+    if(e.code === 'ArrowUp' || e.code === 'KeyW') held.fwd = false;
+  });
+
+  /* ================= loop ================= */
+  var STEER_MPS = 1.6;
+  var lastTs = null;
+  function tick(ts){
+    if(lastTs === null) lastTs = ts;
+    var dt = Math.min(0.05, (ts-lastTs)/1000);
+    lastTs = ts;
+
+    if(!arrived){
+      if(held.left) lateralX = Math.max(-(LANE_HALF-0.15), lateralX - STEER_MPS*dt);
+      if(held.right) lateralX = Math.min(LANE_HALF-0.15, lateralX + STEER_MPS*dt);
+      if(playing || held.fwd) setDistance(distZ + REAL_MPS*speedMult*dt);
+    }
+    requestAnimationFrame(tick);
+  }
+  updateHUD();
+  requestAnimationFrame(tick);
+
+})();
+</script>
+</body>
+</html>
