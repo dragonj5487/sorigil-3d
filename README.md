@@ -28,11 +28,15 @@ VWorld 3D 지도 Open API 위에서, 강동역을 향해 걸어가는 가상의 
 
 ```html
 <script type="text/javascript"
-  src="http://map.vworld.kr/js/webglMapInit.js.do?version=2.0&apiKey=VWORLD_API_KEY&domain=VWORLD_DOMAIN">
+  src="https://map.vworld.kr/js/webglMapInit.js.do?version=2.0&apiKey=VWORLD_API_KEY&domain=VWORLD_DOMAIN">
 </script>
 ```
 
 `VWORLD_API_KEY`는 발급받은 인증키로, `VWORLD_DOMAIN`은 1번에서 등록한 도메인으로 바꿔주세요.
+
+> **반드시 `https://`로 시작해야 합니다.** GitHub Pages는 https로 서비스되는데 스크립트를 `http://`로
+> 불러오면 브라우저가 "혼합 콘텐츠(mixed content)"로 보고 조용히 차단합니다 — 콘솔에만 에러가 남고
+> 화면에는 아무 안내도 없이 지도가 안 뜹니다.
 
 ## 3. 로컬에서 확인하기
 
